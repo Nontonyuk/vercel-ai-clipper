@@ -1,64 +1,92 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Video Clipper</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Video Clipper</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css" />
 </head>
 <body>
-    <h1>🎬 AI Video & Script Clipper</h1>
-    
-    <label>1. URL Video (YouTube):</label>
-    <input type="text" id="url" placeholder="Contoh: https://youtu.be/...">
-    
-    <label>2. Kalimat/Ucapan yang Dicari:</label>
-    <input type="text" id="keyword" placeholder="Contoh: kesalahan pertama">
-    
-    <button onclick="prosesPencarian()">Cari Detik Video</button>
-    
-    <div id="loading" style="display:none; color:blue; margin-top: 15px;">⏳ AI Gemini sedang membaca transkrip video...</div>
-    <div id="hasil" style="margin-top: 20px;"></div>
+  <h1>🎬 AI Video & Script Clipper</h1>
 
-    <script>
-        async function prosesPencarian() {
-            const url = document.getElementById('url').value;
-            const keyword = document.getElementById('keyword').value;
-            const loading = document.getElementById('loading');
-            const hasil = document.getElementById('hasil');
+  <label for="url">1. URL Video YouTube:</label>
+  <input type="text" id="url" placeholder="Contoh: https://youtu.be/..." />
 
-            if(!url || !keyword) return alert("Harap isi URL dan Kata Kunci!");
+  <label for="keyword">2. Kalimat/Ucapan yang Dicari:</label>
+  <input type="text" id="keyword" placeholder="Contoh: kesalahan pertama" />
 
-            loading.style.display = 'block';
-            hasil.innerHTML = '';
+  <button id="btnCari" type="button">Cari Detik Video</button>
 
-            try {
-                const response = await fetch('/api/clip', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, keyword })
-                });
-                const data = await response.json();
-                loading.style.display = 'none';
+  <div id="loading" style="display:none; color:blue; margin-top: 15px;">⏳ Sedang membaca subtitle video...</div>
+  <div id="hasil" style="margin-top: 20px;"></div>
 
-                if(response.ok) {
-                    // Jika sukses, tampilkan detik dan link langsung ke video
-                    hasil.innerHTML = `
-                        <h3 style="color:green;">✅ Momen Ditemukan!</h3>
-                        <p>Mulai: <b>Detik ke-${data.start}</b></p>
-                        <p>Selesai: <b>Detik ke-${data.end}</b></p>
-                        <a href="${url}&t=${data.start}s" target="_blank">
-                            <button style="background-color: #ff0000; color: white;">▶️ Tonton Bagian Ini</button>
-                        </a>
-                    `;
-                } else {
-                    hasil.innerHTML = `<p style="color:red;">❌ Gagal: ${data.error}</p>`;
-                }
-            } catch (err) {
-                loading.style.display = 'none';
-                hasil.innerHTML = `<p style="color:red;">❌ Terjadi kesalahan jaringan. Cek koneksi internetmu.</p>`;
-            }
+  <script>
+    const btnCari = document.getElementById('btnCari');
+    btnCari.addEventListener('click', prosesPencarian);
+
+    function buildTimestampUrl(rawUrl, start) {
+      const url = new URL(rawUrl);
+      url.searchParams.set('t', `${Math.max(0, Math.round(start))}s`);
+      return url.toString();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function prosesPencarian() {
+      const url = document.getElementById('url').value.trim();
+      const keyword = document.getElementById('keyword').value.trim();
+      const loading = document.getElementById('loading');
+      const hasil = document.getElementById('hasil');
+
+      if (!url || !keyword) {
+        alert('Harap isi URL dan kata kunci!');
+        return;
+      }
+
+      loading.style.display = 'block';
+      hasil.innerHTML = '';
+      btnCari.disabled = true;
+
+      try {
+        const response = await fetch('/api/clip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, keyword }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        loading.style.display = 'none';
+
+        if (response.ok) {
+          const start = Math.round(Number(data.start));
+          const end = Math.round(Number(data.end));
+          const watchUrl = buildTimestampUrl(url, start);
+
+          hasil.innerHTML = `
+            <h3 style="color:green;">✅ Momen Ditemukan!</h3>
+            <p>Mulai: <b>Detik ke-${start}</b></p>
+            <p>Selesai: <b>Detik ke-${end}</b></p>
+            <a href="${escapeHtml(watchUrl)}" target="_blank" rel="noopener noreferrer">
+              <button style="background-color:#ff0000; color:white;">▶️ Tonton Bagian Ini</button>
+            </a>
+          `;
+        } else {
+          hasil.innerHTML = `<p style="color:red;">❌ Gagal: ${escapeHtml(data.error || 'Terjadi kesalahan.')}</p>`;
         }
-    </script>
+      } catch (err) {
+        loading.style.display = 'none';
+        hasil.innerHTML = `<p style="color:red;">❌ Terjadi kesalahan jaringan atau server belum aktif.</p>`;
+      } finally {
+        btnCari.disabled = false;
+      }
+    }
+  </script>
 </body>
 </html>
