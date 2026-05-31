@@ -1,30 +1,48 @@
-const axios = require('axios');
+const { GoogleGenAI } = require('@google/genai');
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method tidak diizinkan' });
+        return res.status(405).json({ error: 'Metode tidak diizinkan' });
     }
 
     const { url, keyword } = req.body;
 
+    if (!url || !keyword) {
+        return res.status(400).json({ error: 'Gagal memproses, input tidak lengkap!' });
+    }
+
     try {
-        // Di sini kita melempar tugas ke pihak ketiga yang kuat memproses video 50 menit
-        // Contoh ini mensimulasikan panggilan ke API AI Video Editor (seperti Deepgram/Pipewing)
-        const response = await axios.post('https://api.ai-video-processor.com/v1/auto-clip', {
-            video_url: url,
-            search_text: keyword,
-            api_key: process.env.AI_SERVICE_KEY // Kita simpan rahasia API Key di Vercel
+        // Menggunakan API Key Gemini asli yang disimpan di Vercel
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+        // Meminta Gemini menonton video via URL dan mencari kalimat spesifik
+        const response = await ai.models.generateContent({
+            model: 'gemini-1.5-flash', // Model gratis dan mendukung input video panjang
+            contents: [
+                {
+                    inlineData: {
+                        mimeType: "video/mp4",
+                        data: url
+                    }
+                },
+                `Tonton video ini secara menyeluruh. Tolong deteksi pada detik ke berapa kalimat "${keyword}" diucapkan.
+                Kamu harus merespons HANYA dengan format objek JSON mentah seperti contoh berikut tanpa tambahan teks narasi/markdown apa pun:
+                {"start": 340, "end": 355}`
+            ],
         });
 
-        // Respons sukses dari server AI yang berisi link video hasil potongan pendek
-        const dataHasil = response.data; 
+        // Membersihkan text response jika ada sisa format markdown ```json ... ```
+        let cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const timeline = JSON.parse(cleanText);
 
+        // Mengembalikan data detik akurat ke halaman website
         return res.status(200).json({
             status: "success",
-            clipUrl: dataHasil.output_mp4_url // Link video vertikal siap tonton
+            start: timeline.start,
+            end: timeline.end
         });
 
     } catch (error) {
-        return res.status(500).json({ error: "Gagal memproses AI: " + error.message });
+        return res.status(500).json({ error: "Gagal berdiskusi dengan Gemini API: " + error.message });
     }
 }
