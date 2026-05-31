@@ -1,4 +1,5 @@
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { YoutubeTranscript } = require('youtube-transcript');
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
@@ -8,34 +9,26 @@ export default async function handler(req, res) {
     const { url, keyword } = req.body;
 
     if (!url || !keyword) {
-        return res.status(400).json({ error: 'Gagal memproses, input tidak lengkap!' });
+        return res.status(400).json({ error: 'Input tidak lengkap!' });
     }
 
     try {
-        // Menggunakan API Key Gemini asli yang disimpan di Vercel
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const transkripRaw = await YoutubeTranscript.fetchTranscript(url);
+        let teksTranskrip = transkripRaw.map(t => `[Detik ${Math.round(t.offset / 1000)}] ${t.text}`).join('\n');
 
-        // Meminta Gemini menonton video via URL dan mencari kalimat spesifik
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash', // Model gratis dan mendukung input video panjang
-            contents: [
-                {
-                    inlineData: {
-                        mimeType: "video/mp4",
-                        data: url
-                    }
-                },
-                `Tonton video ini secara menyeluruh. Tolong deteksi pada detik ke berapa kalimat "${keyword}" diucapkan.
-                Kamu harus merespons HANYA dengan format objek JSON mentah seperti contoh berikut tanpa tambahan teks narasi/markdown apa pun:
-                {"start": 340, "end": 355}`
-            ],
-        });
+        // Menggunakan library klasik yang lebih stabil
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        
+        const prompt = `Berikut adalah transkrip video YouTube beserta detiknya:\n${teksTranskrip}\nCari di detik ke berapa kalimat yang paling mirip dengan "${keyword}" diucapkan. Jawab HANYA dengan format JSON mentah: {"start": 120, "end": 135}`;
 
-        // Membersihkan text response jika ada sisa format markdown ```json ... ```
-        let cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+
+        let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const timeline = JSON.parse(cleanText);
 
-        // Mengembalikan data detik akurat ke halaman website
         return res.status(200).json({
             status: "success",
             start: timeline.start,
@@ -43,6 +36,6 @@ export default async function handler(req, res) {
         });
 
     } catch (error) {
-        return res.status(500).json({ error: "Gagal berdiskusi dengan Gemini API: " + error.message });
+        return res.status(500).json({ error: "Gagal memproses. Detail: " + error.message });
     }
 }
