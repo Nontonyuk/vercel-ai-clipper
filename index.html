@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Clipper Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+    <style>
+        body { padding: 30px; max-width: 800px; margin: 0 auto; }
+        .loading { display: none; color: #0070f3; font-weight: bold; }
+        .video-box { margin-top: 20px; display: none; }
+    </style>
+</head>
+<body>
+    <h1>🎬 Vercel AI Clipper Board</h1>
+    <p>Aplikasi pemotong video otomatis berbasis pencarian teks kalimat kalimat di video panjang.</p>
+
+    <label for="url">1. URL Video (YouTube/MP4):</label>
+    <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=...">
+
+    <label for="keyword">2. Kata/Kalimat yang Ingin Dicari:</label>
+    <input type="text" id="keyword" placeholder="Ketik kata, misal: 'sukses' atau 'keuntungan'">
+
+    <button onclick="prosesPotongVideo()">Cari & Potong Otomatis</button>
+
+    <div id="loadingStatus" class="loading">⏳ AI sedang menganalisis video 50 menit kamu... Harap tunggu...</div>
+    <div id="hasil"></div>
+
+    <div class="video-box" id="videoBox">
+        <h3>🎉 Hasil Potongan Video Pendek:</h3>
+        <video id="outputVideo" width="100%" controls></video>
+    </div>
+
+    <script>
+        async function prosesPotongVideo() {
+            const url = document.getElementById('url').value;
+            const keyword = document.getElementById('keyword').value;
+            const loading = document.getElementById('loadingStatus');
+            const hasil = document.getElementById('hasil');
+            const videoBox = document.getElementById('videoBox');
+            const outputVideo = document.getElementById('outputVideo');
+
+            if(!url || !keyword) return alert("Mohon isi semua kolom!");
+
+            loading.style.display = 'block';
+            hasil.innerHTML = '';
+            videoBox.style.display = 'none';
+
+            try {
+                // Memanggil Serverless Backend kita di Vercel
+                const response = await fetch('/api/clip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, keyword })
+                });
+                
+                const data = await response.json();
+
+                loading.style.display = 'none';
+
+                if (response.ok) {
+                    hasil.innerHTML = `<p style="color:green"><b>Sukses!</b> Kalimat ditemukan pada potongan video.</p>`;
+                    outputVideo.src = data.clipUrl; // Link video hasil potongan dari AI API
+                    videoBox.style.display = 'block';
+                } else {
+                    hasil.innerHTML = `<p style="color:red">Gagal: ${data.error}</p>`;
+                }
+            } catch (err) {
+                loading.style.display = 'none';
+                hasil.innerHTML = `<p style="color:red">Terjadi kesalahan jaringan.</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
