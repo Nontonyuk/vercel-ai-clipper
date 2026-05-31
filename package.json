@@ -1,7 +1,8 @@
 {
-  "name": "vercel-ai-clipper",
+  "name": "gemini-video-clipper",
   "version": "1.0.0",
   "dependencies": {
-    "axios": "^1.6.0"
+    "@google/genai": "^0.1.1",
+    "youtube-transcript": "^1.2.1"
   }
 }
