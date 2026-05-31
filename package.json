@@ -1,8 +1,11 @@
 {
   "name": "gemini-video-clipper",
   "version": "1.0.0",
+  "private": true,
   "dependencies": {
-    "@google/generative-ai": "^0.11.1",
-    "youtube-transcript": "^1.2.1"
+    "@google/generative-ai": "^0.11.1"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
