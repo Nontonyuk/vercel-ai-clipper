@@ -1,5 +1,4 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { YoutubeTranscript } = require('youtube-transcript');
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -8,23 +7,42 @@ export default async function handler(req, res) {
     if (!url || !keyword) return res.status(400).json({ error: 'Input tidak lengkap' });
 
     try {
-        // 1. Ambil transkrip dari YouTube
-        const transkripRaw = await YoutubeTranscript.fetchTranscript(url);
+        // 1. Mengekstrak ID Video secara otomatis dari link yang dimasukkan
+        let videoId = '';
+        if (url.includes('v=')) {
+            videoId = url.split('v=')[1].split('&')[0];
+        } else if (url.includes('youtu.be/')) {
+            videoId = url.split('youtu.be/')[1].split('?')[0];
+        }
+        if (!videoId) return res.status(400).json({ error: 'Format URL YouTube tidak valid' });
+
+        // 2. Menggunakan "Jalan Belakang" via Piped API (Tembus Blokir Anti-Bot YouTube)
+        const pipedRes = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
+        const pipedData = await pipedRes.json();
+
+        // Cek apakah sistem berhasil menemukan daftar subtitle
+        if (!pipedData.subtitles || pipedData.subtitles.length === 0) {
+            return res.status(400).json({ error: 'Video ini murni tidak memiliki Subtitle/CC.' });
+        }
+
+        // 3. Mengambil file mentah subtitle (format .vtt)
+        const subUrl = pipedData.subtitles[0].url;
+        const vttRes = await fetch(subUrl);
+        let teksTranskrip = await vttRes.text();
         
-        // Gabungkan teks dan batasi panjangnya agar AI tidak kewalahan (maksimal 50.000 karakter)
-        let teksTranskrip = transkripRaw.map(t => `[Detik ${Math.round(t.offset / 1000)}] ${t.text}`).join('\n');
+        // Membatasi panjang karakter agar tidak meledakkan kuota baca Gemini
         teksTranskrip = teksTranskrip.substring(0, 50000); 
 
-        // 2. Kirim ke Gemini
+        // 4. Menugaskan AI Gemini untuk menganalisis dokumen teks tersebut
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-        const prompt = `Ini adalah transkrip video YouTube beserta detiknya:\n\n${teksTranskrip}\n\nCari di detik ke berapa kalimat yang paling mirip dengan "${keyword}" diucapkan. Jawab HANYA dengan format JSON mentah tanpa teks markdown apapun:\n{"start": 120, "end": 135}`;
+        const prompt = `Ini adalah file mentah subtitle video (.vtt):\n\n${teksTranskrip}\n\nCari pada detik ke berapa kalimat yang paling mirip dengan kata/kalimat "${keyword}" diucapkan. Jawab HANYA dengan format objek JSON mentah tanpa penjelasan atau teks markdown apapun seperti contoh ini:\n{"start": 12, "end": 15}`;
 
         const result = await model.generateContent(prompt);
         const text = result.response.text();
 
-        // 3. Bersihkan respons menjadi JSON murni
+        // 5. Membersihkan format agar website tidak kebingungan saat membacanya
         let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const timeline = JSON.parse(cleanText);
 
@@ -34,6 +52,6 @@ export default async function handler(req, res) {
         });
 
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "Gagal memproses AI: " + error.message });
     }
 }
